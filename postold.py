@@ -2,6 +2,8 @@ import prepold
 import MLP
 
 (testDict) = prepold.dict()
+print(testDict)
+print("hi")
 
 sortedDict = dict()
 for key in testDict:
@@ -11,6 +13,7 @@ for key in testDict:
         index[x.index(max(x))] = i
         x[x.index(max(x))] = min(x)-1
     sortedDict[key] = index
+print(sortedDict)
 
 testQuestions = prepold.ques()
 
@@ -26,7 +29,7 @@ for i in range(len(output)):
 
 outputSorted = dict()
 for key in outputDict:
-    x = testDict[key]
+    x = outputDict[key]
     index = [0]*len(x)
     for i in range(len(x)):
         index[x.index(max(x))] = i
