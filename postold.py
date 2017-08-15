@@ -2,8 +2,6 @@ import prepold
 import MLP
 
 (testDict) = prepold.dict()
-print(testDict)
-print("hi")
 
 sortedDict = dict()
 for key in testDict:

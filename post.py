@@ -1,8 +1,10 @@
-import prep
-import MLP
+import prepSparse
+import sparse_MLP
 
-(testDict) = prep.dict()
+(testDict) = prepSparse.dict()
 
+#creates a dictionary that replaces the score with
+#the its ranking among all the answers for a specific question
 sortedDict = dict()
 for key in testDict:
     x = testDict[key]
@@ -13,9 +15,11 @@ for key in testDict:
     sortedDict[key] = index
 
 
-testQuestions = prep.ques()
+testQuestions = prepSparse.ques()
 
-(ranks, output) = MLP.test_mlp()
+(output) = sparse_MLP.test_mlp()
+#creates a dictionary that maps the a question to its
+#predicted output of answers
 outputDict = dict()
 for i in range(len(output)):
     ques = testQuestions[i]
@@ -23,6 +27,7 @@ for i in range(len(output)):
         outputDict[ques] = [output[i]]
     else: outputDict[ques] += [output[i]]
 
+#sorts the predicted outputs according to rank
 outputSorted = dict()
 for key in outputDict:
     x = testDict[key]
@@ -32,6 +37,7 @@ for key in outputDict:
         x[x.index(max(x))] = min(x)-1
     outputSorted[key] = index
 
+#calculates the MRR accuracy for the test set
 final = 0
 for ques in testDict:
     x = testDict[ques]

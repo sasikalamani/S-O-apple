@@ -1,5 +1,6 @@
-#adding amazon data 
-
+#two input matrices that each have a distributed encoding layer
+#then multiple combined layers with a final output
+#using hinton's paper on distributed learning for model
 from __future__ import print_function
 import nltk
 import math
@@ -14,16 +15,17 @@ __docformat__ = 'restructedtext en'
 import os
 import sys
 import timeit
+import prepSparse
 from logistic_sgd import LogisticRegression
-import prepold
 
-#(quesIn, userIn, output) = rand.allInputs()
-(train, test, trainO, testO) = prepold.inout()
+(trainIn, testIn, trainIn1, testIn1, trainScore, testScore) = prepSparse.inout()
+#(test1, test2, testO, train1, train2, trainO, valid1, valid2, validO) = rand.allInputs()
+#print(len(array2))
 
 # start-snippet-1
 class HiddenLayer(object):
     def __init__(self, rng, input, n_in, n_out, W=None, b=None,
-                 activation=T.tanh):
+                 activation=T.nnet.relu):
         """
         Typical hidden layer of a MLP: units are fully-connected and have
         sigmoidal activation function. Weight matrix W is of shape (n_in,n_out)
@@ -106,7 +108,7 @@ class MLP(object):
     class).
     """
 
-    def __init__(self, rng, input, n_in, n_hidden, n_out):
+    def __init__(self, rng, inputA, inputB, n_inA, n_inB, n_hidden, n_out):
         """Initialize the parameters for the multilayer perceptron
 
         :type rng: numpy.random.RandomState
@@ -133,42 +135,57 @@ class MLP(object):
         # into a HiddenLayer with a tanh activation function connected to the
         # LogisticRegression layer; the activation function can be replaced by
         # sigmoid or any other nonlinear function
-        self.hiddenLayer = HiddenLayer(
+        self.hiddenLayerL = HiddenLayer(
             rng=rng,
-            input=input,
-            n_in=n_in,
-            n_out=n_hidden,
-            activation=T.tanh
+            input=inputA,
+            n_in=n_inA,
+            n_out=6,
+            activation=T.nnet.relu
         )
-        self.hiddenLayer2 = HiddenLayer(
-            rng=rng,
-            input=self.hiddenLayer.output,
-            n_in=n_hidden,
-            n_out=n_hidden,
-            activation=T.tanh
+        self.hiddenLayerR = HiddenLayer(
+            rng = rng,
+            input=inputB, 
+            n_in = n_inB,
+            n_out = 6,
+            activation = T.nnet.relu
         )
+        self.hiddenLayerTop = HiddenLayer(
+            rng = rng, 
+            input = T.concatenate([self.hiddenLayerL.output,self.hiddenLayerR.output],1),
+            n_in = 12,
+            n_out = n_hidden,
+            activation = T.nnet.relu)
+
+        self.hiddenLayerNew = HiddenLayer(
+            rng = rng, 
+            input = self.hiddenLayerTop.output,
+            n_in = n_hidden,
+            n_out = 6,
+            activation = T.nnet.relu)
 
         # The logistic regression layer gets as input the hidden units
         # of the hidden layer
         self.logRegressionLayer = LogisticRegression(
-            input=self.hiddenLayer2.output,
-            n_in= n_hidden,
+            input=self.hiddenLayerNew.output,
+            n_in=6,
             n_out=n_out
         )
         # end-snippet-2 start-snippet-3
         # L1 norm ; one regularization option is to enforce L1 norm to
         # be small
         self.L1 = (
-            abs(self.hiddenLayer.W).sum()
-            + abs(self.hiddenLayer2.W).sum()
+            abs(self.hiddenLayerL.W).sum()
+            + abs(self.hiddenLayerR.W).sum()
+            + abs(self.hiddenLayerTop.W).sum()
             + abs(self.logRegressionLayer.W).sum()
         )
 
         # square of L2 norm ; one regularization option is to enforce
         # square of L2 norm to be small
         self.L2_sqr = (
-            (self.hiddenLayer.W ** 2).sum()
-            + (self.hiddenLayer2.W ** 2).sum()
+            (self.hiddenLayerL.W ** 2).sum()
+            + (self.hiddenLayerR.W ** 2).sum()
+            + (self.hiddenLayerTop.W ** 2).sum()
             + (self.logRegressionLayer.W ** 2).sum()
         )
 
@@ -181,12 +198,11 @@ class MLP(object):
         # same holds for the function computing the number of errors
         self.errors = self.logRegressionLayer.errors
 
-
         self.y_given_x = self.logRegressionLayer.y_given_x
 
         # the parameters of the model are the parameters of the two layer it is
         # made out of
-        self.params = self.hiddenLayer.params + self.logRegressionLayer.params + self.hiddenLayer2.params
+        self.params = self.hiddenLayerR.params + self.logRegressionLayer.params + self.hiddenLayerL.params + self.hiddenLayerTop.params + self.hiddenLayerNew.params
         # end-snippet-3
 
         # keep track of model input
@@ -194,10 +210,10 @@ class MLP(object):
 
 
 def test_mlp(learning_rate=0.01, L1_reg=0.00, L2_reg=0.0001, n_epochs=100,
-             dataset='mnist.pkl.gz', batch_size=128, n_hidden=64):
+             dataset='mnist.pkl.gz', batch_size=5, n_hidden=10):
     """
     Demonstrate stochastic gradient descent optimization for a multilayer
-    perceptrons
+    perceptron
 
     This is demonstrated on MNIST.
 
@@ -223,19 +239,34 @@ def test_mlp(learning_rate=0.01, L1_reg=0.00, L2_reg=0.0001, n_epochs=100,
 
    """
 
-    #print(trainO)
-    Xo = theano.shared(value=np.asarray(train, dtype='float64'), name='Xo')
-    yo = theano.shared(value=np.asarray(trainO, dtype = 'int32'), name='yo')
-    Xot = theano.shared(value=np.asarray(test, dtype='float64'), name='Xot')
-    yot = theano.shared(value=np.asarray(testO, dtype = 'int32'), name='yot')
-    Xov = theano.shared(value=np.asarray(train, dtype='float64'), name='Xot')
-    yov = theano.shared(value=np.asarray(trainO, dtype = 'int32'), name='yot')
+    Xo = theano.shared(value=np.asarray(trainIn, dtype='float64'), name='Xo')
+    XO = theano.shared(value=np.asarray(trainIn1, dtype='float64'), name='XO')
+    yo = theano.shared(value=np.asarray(trainScore, dtype='int32'), name='yo')
+    Xo1 = theano.shared(value=np.asarray(trainIn, dtype='float64'), name='Xo1')
+    XO1 = theano.shared(value=np.asarray(trainIn1, dtype='float64'), name='XO1')
+    yo1 = theano.shared(value=np.asarray(trainScore, dtype='int32'), name='yo1')
+    Xo2 = theano.shared(value=np.asarray(testIn, dtype='float64'), name='Xo2')
+    XO2 = theano.shared(value=np.asarray(testIn1, dtype='float64'), name='XO2')
+    yo2 = theano.shared(value=np.asarray(testScore, dtype='int32'), name='yo2')
 
-    #print(y)
-#    sys.exit()
-    train_set_x, train_set_y = (Xo,yo)
-    valid_set_x, valid_set_y = (Xov,yov)
-    test_set_x, test_set_y = (Xot,yot)
+
+
+
+
+
+    # Xo = theano.shared(value=np.asarray(train1, dtype='float64'), name='Xo')
+    # XO = theano.shared(value=np.asarray(train2, dtype='float64'), name='XO')
+    # yo = theano.shared(value=np.asarray(trainO, dtype='int32'), name='yo')
+    # Xo1 = theano.shared(value=np.asarray(valid1, dtype='float64'), name='Xo1')
+    # XO1 = theano.shared(value=np.asarray(valid2, dtype='float64'), name='XO1')
+    # yo1 = theano.shared(value=np.asarray(validO, dtype='int32'), name='yo1')
+    # Xo2 = theano.shared(value=np.asarray(test1, dtype='float64'), name='Xo2')
+    # XO2 = theano.shared(value=np.asarray(test2, dtype='float64'), name='XO2')
+    # yo2 = theano.shared(value=np.asarray(testO, dtype='int32'), name='yo2')
+
+    train_set_x, train_set_x1, train_set_y = (Xo, XO, yo)
+    valid_set_x, valid_set_x1, valid_set_y  = (Xo1, XO1, yo1)
+    test_set_x, test_set_x1, test_set_y = (Xo2, XO2, yo2)
 
     # compute number of minibatches for training, validation and testing
     n_train_batches = train_set_x.get_value(borrow=True).shape[0] // batch_size
@@ -250,6 +281,7 @@ def test_mlp(learning_rate=0.01, L1_reg=0.00, L2_reg=0.0001, n_epochs=100,
     # allocate symbolic variables for the data
     index = T.lscalar()  # index to a [mini]batch
     x = T.matrix('x')  # the data is presented as rasterized images
+    x1 = T.matrix('x1')
     y = T.ivector('y')  # the labels are presented as 1D vector of
                         # [int] labels
 
@@ -258,8 +290,10 @@ def test_mlp(learning_rate=0.01, L1_reg=0.00, L2_reg=0.0001, n_epochs=100,
     # construct the MLP class
     classifier = MLP(
         rng=rng,
-        input=x,
-        n_in=12576,
+        inputA=x,
+        inputB=x1,
+        n_inA=667,
+        n_inB=11909,
         n_hidden=n_hidden,
         n_out=102
     )
@@ -281,8 +315,9 @@ def test_mlp(learning_rate=0.01, L1_reg=0.00, L2_reg=0.0001, n_epochs=100,
         inputs=[index],
         outputs=classifier.errors(y),
         givens={
-            x: test_set_x[index * batch_size:(index + 1) * batch_size],
-            y: test_set_y[index * batch_size:(index + 1) * batch_size]
+            x: test_set_x[index * batch_size: (index + 1) * batch_size], 
+            x1: test_set_x1[index * batch_size: (index + 1) * batch_size], 
+            y: test_set_y[index * batch_size: (index + 1) * batch_size]
         }
     )
 
@@ -290,8 +325,9 @@ def test_mlp(learning_rate=0.01, L1_reg=0.00, L2_reg=0.0001, n_epochs=100,
         inputs=[index],
         outputs=classifier.errors(y),
         givens={
-            x: valid_set_x[index * batch_size:(index + 1) * batch_size],
-            y: valid_set_y[index * batch_size:(index + 1) * batch_size]
+            x: valid_set_x[index * batch_size: (index + 1) * batch_size],
+            x1: valid_set_x1[index * batch_size: (index + 1) * batch_size], 
+            y: valid_set_y[index * batch_size: (index + 1) * batch_size]
         }
     )
 
@@ -321,20 +357,22 @@ def test_mlp(learning_rate=0.01, L1_reg=0.00, L2_reg=0.0001, n_epochs=100,
         updates=updates,
         givens={
             x: train_set_x[index * batch_size: (index + 1) * batch_size],
+            x1: train_set_x1[index * batch_size: (index + 1) * batch_size], 
             y: train_set_y[index * batch_size: (index + 1) * batch_size]
         }
     )
-    rank_model = theano.function(
-        inputs = [index],
-        outputs=classifier.y_given_x(x),
-        givens={
-            x: test_set_x[(index-index):]
-            #y: train_set_y[(index-index):]
-        }
-    )
+
+    # rank_model = theano.function(
+    #     inputs = [index],
+    #     outputs=classifier.y_given_x(x),
+    #     givens={
+    #         #x: train_set_x[(index-index):]
+    #         y: train_set_y[(index-index):]
+    #     }
+    # )
     # end-snippet-5
 
- ###############
+    ###############
     # TRAIN MODEL #
     ###############
     #print('... training')
@@ -400,16 +438,16 @@ def test_mlp(learning_rate=0.01, L1_reg=0.00, L2_reg=0.0001, n_epochs=100,
                     test_losses = [test_model(i) for i
                                    in range(n_test_batches)]
                     test_score = np.mean(test_losses)
-                    ranks = rank_model(n_test_batches)
 
                     print(('     epoch %i, minibatch %i/%i, test error of '
                            'best model %f %%') %
                           (epoch, minibatch_index + 1, n_train_batches,
-                           test_score * 100.))          
+                           test_score * 100.))
+
     #        if patience <= iter:
     #            done_looping = True
     #            break
-    #print(ranks)
+
     end_time = timeit.default_timer()
     print(('Optimization complete. Best validation score of %f %% '
            'obtained at iteration %i, with test performance %f %%') %
@@ -418,14 +456,10 @@ def test_mlp(learning_rate=0.01, L1_reg=0.00, L2_reg=0.0001, n_epochs=100,
            os.path.split(__file__)[1] +
            ' ran for %.2fm' % ((end_time - start_time) / 60.)), file=sys.stderr)
     print("\n")
-    new = []
-    for i in range(len(ranks)):
-        new.append(ranks[i][101])
-    return new
+    return(testScore)
 
 
 
 if __name__ == '__main__':
     test_mlp()
     
-
